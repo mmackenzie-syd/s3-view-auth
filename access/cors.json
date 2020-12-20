@@ -4,6 +4,9 @@
       "*"
     ],
     "AllowedMethods": [
+      "PUT",
+      "POST",
+      "DELETE",
       "GET",
       "HEAD"
     ],

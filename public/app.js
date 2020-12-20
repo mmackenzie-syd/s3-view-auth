@@ -1,25 +1,106 @@
-const albumBucketName = 'upload-test-syd';
+const {
+    CognitoUserPool,
+    CognitoUserAttribute,
+    CognitoUser,
+    AuthenticationDetails,
+} = AmazonCognitoIdentity;
 
-// Initialize the Amazon Cognito credentials provider
-AWS.config.region = 'ap-southeast-2'; // Region
-AWS.config.credentials = new AWS.CognitoIdentityCredentials({
-    IdentityPoolId: 'xxxx',
-});
+AWS.config.region = 'ap-southeast-2';
 
-// Create a new service object
-var s3 = new AWS.S3({
-    apiVersion: '2006-03-01',
-    params: {Bucket: albumBucketName}
-});
+const albumBucketName = 'view-auth-syd';
 
-// A utility function to create HTML.
+// User Access
+const poolData = {
+    UserPoolId : 'xxxx',
+    ClientId : 'xxxx'
+};
+const userPool = new CognitoUserPool(poolData);
+let cognitoUser;
+let token = null;
+let s3;
+
+const handleSubmit = (event) => {
+    event.preventDefault();
+    const uname = document.getElementById("uname");
+    const password = document.getElementById("password");
+    signin(uname.value, password.value);
+}
+
+const handleReset = (event) => {
+    event.preventDefault();
+    const password = document.getElementById("newpasswd");
+    console.log('reset-1', password.value)
+    reset(password.value);
+}
+
+const signin = (email, password) => {
+    const authenticationData = {
+        Username: email,
+        Password: password,
+    };
+    const authenticationDetails = new AuthenticationDetails(
+        authenticationData
+    );
+
+    const userData = {
+        Username: email,
+        Pool: userPool,
+    };
+    cognitoUser = new CognitoUser(userData);
+    cognitoUser.authenticateUser(authenticationDetails, {
+        onSuccess: function(result) {
+            document.getElementById("signin").style.display = "none";
+            token = result.getIdToken().getJwtToken();
+            setCredentials(token);
+        },
+        newPasswordRequired: function(result, session) {
+            const { email } = result;
+            document.getElementById("signin").style.display = "none";
+            document.getElementById("reset").style.display = "block";
+        },
+        onFailure: function(err) {
+            alert(err.message || JSON.stringify(err));
+        },
+    });
+}
+
+const setCredentials = (token) => {
+    // Add the User's Id Token to the Cognito credentials login map.
+    AWS.config.credentials = new AWS.CognitoIdentityCredentials({
+        IdentityPoolId: 'xxxx',
+        Logins: {
+            'xxxx': token
+        }
+    });
+    s3 = new AWS.S3({
+        apiVersion: '2006-03-01',
+        params: {Bucket: albumBucketName}
+    });
+    listAlbums();
+}
+
+const reset = (password) => {
+    cognitoUser.completeNewPasswordChallenge(password, [], {
+        onSuccess: function(result) {
+            token = result.getIdToken().getJwtToken();
+            setCredentials(token)
+        },
+        onFailure: function(err) {
+            alert(err.message || JSON.stringify(err));
+        }}
+    );
+}
+
+const signout = () => async(dispatch) => {
+    cognitoUser.signOut();
+    document.getElementById("signin").style.display = "block";
+    token = null;
+}
+
 function getHtml(template) {
     return template.join('\n');
 }
 
-//
-// Functions
-//
 // List the photo albums that exist in the bucket.
 function listAlbums() {
     s3.listObjects({Delimiter: '/'}, function(err, data) {
@@ -49,7 +130,7 @@ function listAlbums() {
                 getHtml(albums),
                 '</ul>',
             ]
-            document.getElementById('viewer').innerHTML = getHtml(htmlTemplate);
+            document.getElementById('app').innerHTML = getHtml(htmlTemplate);
         }
     });
 }
@@ -107,7 +188,8 @@ function viewAlbum(albumName) {
             '</button>',
             '</div>',
         ]
-        document.getElementById('viewer').innerHTML = getHtml(htmlTemplate);
+        document.getElementById('app').innerHTML = getHtml(htmlTemplate);
         document.getElementsByTagName('img')[0].setAttribute('style', 'display:none;');
     });
 }
+
